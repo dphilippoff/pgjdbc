@@ -47,7 +47,7 @@ public abstract class BaseDataSource implements CommonDataSource, Referenceable 
   private String databaseName = "";
   private String user;
   private String password;
-  private int portNumber = 0;
+  private String portNumber = "0";
 
   // Map for all other properties
   private Properties properties = new Properties();
@@ -217,7 +217,7 @@ public abstract class BaseDataSource implements CommonDataSource, Referenceable 
    *
    * @return The port, or 0 if the default port will be used.
    */
-  public int getPortNumber() {
+  public String getPortNumber() {
     return portNumber;
   }
 
@@ -228,8 +228,19 @@ public abstract class BaseDataSource implements CommonDataSource, Referenceable 
    *
    * @param portNumber port which the PostgreSQL server is listening on for TCP/IP
    */
-  public void setPortNumber(int portNumber) {
+  public void setPortNumber(String portNumber) {
     this.portNumber = portNumber;
+  }
+
+  /**
+   * Gets the port which the PostgreSQL server is listening on for TCP/IP connections. Be sure the
+   * -i flag is passed to postmaster when PostgreSQL is started. If this is not set, or set to 0,
+   * the default port will be used.
+   *
+   * @param portNumber port which the PostgreSQL server is listening on for TCP/IP
+   */
+  public void setPortNumber(int portNumber) {
+    this.portNumber = Integer.toString(portNumber);
   }
 
   /**
@@ -1079,9 +1090,20 @@ public abstract class BaseDataSource implements CommonDataSource, Referenceable 
   public String getUrl() {
     StringBuilder url = new StringBuilder(100);
     url.append("jdbc:postgresql://");
-    url.append(serverName);
-    if (portNumber != 0) {
-      url.append(":").append(portNumber);
+    if (serverName.contains(",")) {
+      String[] servers = serverName.split(",");
+      String[] ports = portNumber.split(",");
+      for (int i = 0; i < servers.length; i++) {
+        url.append(servers[i]);
+        if (i < ports.length && !"".equals(ports[i]) && !"0".equals(ports[i])) {
+          url.append(":").append(ports[i]);
+        }
+      }
+    } else {
+      url.append(serverName);
+      if (!"0".equals(portNumber)) {
+        url.append(":").append(portNumber);
+      }
     }
     url.append("/").append(URLCoder.encode(databaseName));
 
@@ -1176,11 +1198,7 @@ public abstract class BaseDataSource implements CommonDataSource, Referenceable 
         serverName = value;
         break;
       case PG_PORT:
-        try {
-          portNumber = Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-          portNumber = 0;
-        }
+        portNumber = value;
         break;
       case PG_DBNAME:
         databaseName = value;
@@ -1208,8 +1226,8 @@ public abstract class BaseDataSource implements CommonDataSource, Referenceable 
   public Reference getReference() throws NamingException {
     Reference ref = createReference();
     ref.add(new StringRefAddr("serverName", serverName));
-    if (portNumber != 0) {
-      ref.add(new StringRefAddr("portNumber", Integer.toString(portNumber)));
+    if (!"0".equals(portNumber)) {
+      ref.add(new StringRefAddr("portNumber", portNumber));
     }
     ref.add(new StringRefAddr("databaseName", databaseName));
     if (user != null) {
@@ -1231,8 +1249,8 @@ public abstract class BaseDataSource implements CommonDataSource, Referenceable 
   public void setFromReference(Reference ref) {
     databaseName = getReferenceProperty(ref, "databaseName");
     String port = getReferenceProperty(ref, "portNumber");
-    if (port != null) {
-      portNumber = Integer.parseInt(port);
+    if (port != null && !port.equals("")) {
+      portNumber = port;
     }
     serverName = getReferenceProperty(ref, "serverName");
 
@@ -1254,7 +1272,7 @@ public abstract class BaseDataSource implements CommonDataSource, Referenceable 
     out.writeObject(databaseName);
     out.writeObject(user);
     out.writeObject(password);
-    out.writeInt(portNumber);
+    out.writeObject(portNumber);
 
     out.writeObject(properties);
   }
@@ -1264,7 +1282,7 @@ public abstract class BaseDataSource implements CommonDataSource, Referenceable 
     databaseName = (String) in.readObject();
     user = (String) in.readObject();
     password = (String) in.readObject();
-    portNumber = in.readInt();
+    portNumber = (String) in.readObject();
 
     properties = (Properties) in.readObject();
   }
